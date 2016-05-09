@@ -3,10 +3,14 @@
  * Contains ExchangeWebServices.
  */
 
-namespace jamesiarmes\PEWS\API;
+namespace garethp\ews\API;
 
-use jamesiarmes\PEWS\API\Message;
-use jamesiarmes\PEWS\API\Type\EmailAddressType;
+use garethp\ews\API\Exception\ExchangeException;
+use garethp\ews\API\Exception\NoResponseReturnedException;
+use garethp\ews\API\Exception\ServiceUnavailableException;
+use garethp\ews\API\Exception\UnauthorizedException;
+use garethp\ews\API\Message;
+use garethp\ews\API\Type\EmailAddressType;
 
 /**
  * Base class of the Exchange Web Services application.
@@ -273,7 +277,7 @@ class ExchangeWebServices
      * @param $name
      * @param $arguments
      * @return Type
-     * @throws \jamesiarmes\PEWS\API\Exception
+     * @throws \garethp\ews\API\Exception
      */
     public function __call($name, $arguments)
     {
@@ -337,22 +341,30 @@ class ExchangeWebServices
      * Process a response to verify that it succeeded and take the appropriate
      * action
      *
-     * @param \jamesiarmes\PEWS\API\Message\BaseResponseMessageType $response
-     * @return \jamesiarmes\PEWS\API\Message\ArrayOfResponseMessageType|\jamesiarmes\PEWS\API\Message\ResponseMessageType
-     * @throws \jamesiarmes\PEWS\API\Exception
+     * @param \garethp\ews\API\Message\BaseResponseMessageType $response
+     * @return \garethp\ews\API\Message\ArrayOfResponseMessageType|\garethp\ews\API\Message\ResponseMessageType
+     * @throws \garethp\ews\API\Exception
      */
     protected function processResponse($response)
     {
         // If the soap call failed then we need to thow an exception.
         $code = $this->getClient()->getResponseCode();
+        if ($code == 401) {
+            throw new UnauthorizedException();
+        }
+
+        if ($code == 503) {
+            throw new ServiceUnavailableException();
+        }
+
         if ($code != 200) {
-            throw new \jamesiarmes\PEWS\API\Exception('SOAP client returned status of ' . $code, $code);
+            throw new ExchangeException('SOAP client returned status of ' . $code, $code);
         }
 
         if (empty($response) ||
             empty($response->getNonNullResponseMessages())
         ) {
-            throw new \jamesiarmes\PEWS\API\Exception('No response returned');
+            throw new NoResponseReturnedException();
         }
 
         if (!$this->drillDownResponses) {
@@ -372,7 +384,7 @@ class ExchangeWebServices
     /**
      * @param $response
      * @return array
-     * @throws \jamesiarmes\PEWS\API\Exception
+     * @throws \garethp\ews\API\Exception
      */
     public function drillDownResponseLevels($response)
     {
@@ -385,7 +397,7 @@ class ExchangeWebServices
 
         if ($response instanceof Message\ResponseMessageType) {
             if ($response->getResponseClass() !== "Success") {
-                throw new \jamesiarmes\PEWS\API\Exception($response->getMessageText());
+                throw new ExchangeException($response->getMessageText());
             }
 
             unset($items['responseClass']);

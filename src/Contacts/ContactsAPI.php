@@ -1,9 +1,9 @@
 <?php
 
-namespace jamesiarmes\PEWS\Contacts;
+namespace garethp\ews\Contacts;
 
-use jamesiarmes\PEWS\API;
-use jamesiarmes\PEWS\API\Type;
+use garethp\ews\API;
+use garethp\ews\API\Type;
 
 class ContactsAPI extends API
 {
@@ -61,6 +61,15 @@ class ContactsAPI extends API
     }
 
     /**
+     * @param Type\ItemIdType $itemId
+     * @return Type\ContactItemType
+     */
+    public function getContact($itemId)
+    {
+        return $this->getItem($itemId);
+    }
+
+    /**
      * @param $contacts
      * @param array $options
      * @return Type\ItemIdType[]
@@ -90,9 +99,7 @@ class ContactsAPI extends API
         $request = array(
             'ItemChange' => array(
                 'ItemId' => $itemId->toArray(),
-                'Updates' => array(
-                    'SetItemField' => $this->buildUpdateItemChanges('Contact', 'contacts', $changes)
-                )
+                'Updates' => $this->buildUpdateItemChanges('Contact', 'contacts', $changes)
             )
         );
 

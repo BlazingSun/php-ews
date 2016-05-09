@@ -1,21 +1,22 @@
 <?php
 
-namespace jamesiarmes\PEWS;
+namespace garethp\ews;
 
-use jamesiarmes\PEWS\API\Enumeration\DictionaryURIType;
-use jamesiarmes\PEWS\API\Enumeration\UnindexedFieldURIType;
-use jamesiarmes\PEWS\API\ExchangeWebServices;
-use jamesiarmes\PEWS\API\Message\GetServerTimeZonesType;
-use jamesiarmes\PEWS\API\Message\SyncFolderItemsResponseMessageType;
-use jamesiarmes\PEWS\API\Type;
-use jamesiarmes\PEWS\Calendar\CalendarAPI;
-use jamesiarmes\PEWS\Mail\MailAPI;
+use garethp\ews\API\Enumeration\DictionaryURIType;
+use garethp\ews\API\Enumeration\UnindexedFieldURIType;
+use garethp\ews\API\Exception\ExchangeException;
+use garethp\ews\API\ExchangeWebServices;
+use garethp\ews\API\Message\GetServerTimeZonesType;
+use garethp\ews\API\Message\SyncFolderItemsResponseMessageType;
+use garethp\ews\API\Type;
+use garethp\ews\Calendar\CalendarAPI;
+use garethp\ews\Mail\MailAPI;
 
 /**
  * A base class for APIs
  *
  * Class BaseAPI
- * @package jamesiarmes\PEWS
+ * @package garethp\ews
  */
 class API
 {
@@ -104,7 +105,7 @@ class API
         }
 
         if (!isset($this->unIndexedFieldUris[$fieldName][$preference])) {
-            throw new \Exception("Could not find uri $preference:$fieldName");
+            throw new ExchangeException("Could not find uri $preference:$fieldName");
         }
 
         return $this->unIndexedFieldUris[$fieldName][$preference];
@@ -128,7 +129,7 @@ class API
         }
 
         if (!isset($this->dictionaryFieldUris[$fieldName][$preference])) {
-            throw new \Exception("Could not find uri $preference:$fieldName");
+            throw new ExchangeException("Could not find uri $preference:$fieldName");
         }
 
         return $this->dictionaryFieldUris[$fieldName][$preference];
@@ -283,38 +284,52 @@ class API
         return $this->getClient()->UpdateItem($request)->getItems();
     }
 
+    protected function getFieldURI($uriType, $key = null, $value = null)
+    {
+        if (strpos($key, ':') !== false) {
+            try {
+                $fieldUri = $this->getIndexedFieldUriByName(substr($key, 0, strpos($key, ':')), $uriType);
+
+                list ($key, $index) = explode(':', $key);
+
+                if (is_array($value)) {
+                    $key = key($value);
+                    $value = $value[$key];
+                }
+
+                return ['IndexedFieldURI', ['FieldURI' => $fieldUri, 'FieldIndex' => $index], $key, $value];
+            } catch (\Exception $e) {
+            }
+        }
+
+        $fullName = $this->getFieldUriByName($key, $uriType);
+        return ['FieldURI', ['FieldURI' => $fullName], $key, $value];
+    }
+
     protected function buildUpdateItemChanges($itemType, $uriType, $changes)
     {
         $setItemFields = array();
+        $deleteItemFields = array();
+
+        if (isset($changes['deleteFields'])) {
+            foreach ($changes['deleteFields'] as $key) {
+                list($fieldUriType, $fieldKey) = $this->getFieldURI($uriType, $key);
+                $deleteItemFields[] = [$fieldUriType => $fieldKey];
+            }
+
+            unset($changes['deleteFields']);
+        }
 
         //Add each property to a setItemField
         foreach ($changes as $key => $value) {
-            if (strpos($key, ':') !== false) {
-                try {
-                    $fieldUri = $this->getIndexedFieldUriByName(substr($key, 0, strpos($key, ':')), $uriType);
-
-                    list ($key, $index) = explode(':', $key);
-                    $fieldKey = key($value);
-                    $value = $value[$fieldKey];
-
-                    $setItemFields[] = array(
-                        'IndexedFieldURI' => array('FieldURI' => $fieldUri, 'FieldIndex' => $index),
-                        $itemType => array($fieldKey => $value)
-                    );
-                    continue;
-                } catch (\Exception $e) {
-                }
-            }
-
-            $fullName = $this->getFieldUriByName($key, $uriType);
-
+            list ($fieldUriType, $fieldKey, $valueKey, $value) = $this->getFieldURI($uriType, $key, $value);
             $setItemFields[] = array(
-                'FieldURI' => array('FieldURI' => $fullName),
-                $itemType => array($key => $value)
+                $fieldUriType => $fieldKey,
+                $itemType => [$valueKey => $value]
             );
         }
 
-        return $setItemFields;
+        return array('SetItemField' => $setItemFields, 'DeleteItemField' => $deleteItemFields);
     }
 
     public function createFolders($names, Type\FolderIdType $parentFolder, $options = array())
@@ -472,7 +487,7 @@ class API
 
         $request = Type::buildFromArray($request);
 
-        /** @var \jamesiarmes\PEWS\API\Message\FindFolderResponseMessageType $folders */
+        /** @var \garethp\ews\API\Message\FindFolderResponseMessageType $folders */
         return $this->getClient()->FindFolder($request);
         return $folders->getFolders();
     }
